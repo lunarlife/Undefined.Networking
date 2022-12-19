@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "3vVK7vCoOtoPDRPh+sEpoFOzFi6WGRVCjXARapKKIX4xZ1VvhZJKdJGR69PHRF5GZcGtyHwrhz/Rhs02aRa5vw==",
+  "success": true,
+  "projectFilePath": "D:\\Code\\Networking\\Networking\\Networking.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\ivana\\.nuget\\packages\\newtonsoft.json\\13.0.1\\newtonsoft.json.13.0.1.nupkg.sha512"
+  ],
+  "logs": []
+}

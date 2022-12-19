@@ -1,0 +1,14 @@
+C:\Code\Networking\Networking\bin\Debug\net6.0\Networking.deps.json
+C:\Code\Networking\Networking\bin\Debug\net6.0\Networking.dll
+C:\Code\Networking\Networking\bin\Debug\net6.0\Networking.pdb
+C:\Code\Networking\Networking\bin\Debug\net6.0\Utils.dll
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.csproj.AssemblyReference.cache
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.GeneratedMSBuildEditorConfig.editorconfig
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.AssemblyInfoInputs.cache
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.AssemblyInfo.cs
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.csproj.CoreCompileInputs.cache
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.csproj.CopyComplete
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.dll
+C:\Code\Networking\Networking\obj\Debug\net6.0\refint\Networking.dll
+C:\Code\Networking\Networking\obj\Debug\net6.0\Networking.pdb
+C:\Code\Networking\Networking\obj\Debug\net6.0\ref\Networking.dll

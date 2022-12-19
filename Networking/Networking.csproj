@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>default</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Reference Include="Utils">
+        <HintPath>..\..\Frameworks\Utils.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    </ItemGroup>
+
+    <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+      <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;C:\Code\Frameworks&quot;&#xA;xcopy /y /d  &quot;C:\Code\Frameworks\Networking.dll&quot; &quot;D:\UndefinedProject\Undefined\Assets\Plugins&quot; " />
+    </Target>
+
+</Project>

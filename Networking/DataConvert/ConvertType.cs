@@ -1,6 +1,6 @@
 namespace Networking.DataConvert;
 
-public enum ConverterUsing
+public enum ConvertType
 {
     OnlyCurrent,
     All,

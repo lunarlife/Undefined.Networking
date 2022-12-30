@@ -9,13 +9,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Reference Include="Utils">
-        <HintPath>..\..\Frameworks\Utils.dll</HintPath>
-      </Reference>
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+      <Reference Include="Utils">
+        <HintPath>C:\Code\Frameworks\Utils.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
     <Target Name="PostBuild" AfterTargets="PostBuildEvent">

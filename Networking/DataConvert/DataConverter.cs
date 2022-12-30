@@ -8,6 +8,7 @@ using Networking.DataConvert.Datas;
 using Networking.DataConvert.DataUse;
 using Networking.DataConvert.Exceptions;
 using Networking.DataConvert.Handlers;
+using Utils;
 
 namespace Networking.DataConvert;
 
@@ -32,11 +33,11 @@ public class DataConverter
     };
 
 
-    public static byte[] Serialize(object? obj, ushort? switcher = null, bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All)
+    public static byte[] Serialize(object? obj, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All)
     {
         if (obj is null) return NullBytes;
         var objType = obj.GetType();
-        var converter = converterUsing is ConverterUsing.ExcludeCurrent or ConverterUsing.ExcludeAll ? null : GetConverterForType(objType);
+        var converter = converterUsing is ConvertType.ExcludeCurrent or ConvertType.ExcludeAll ? null : GetConverterForType(objType);
         if (converter is null)
         {
             var dataUse = objType.GetCustomAttribute<DataConvertUseAttribute>()?.Types ?? DataType.Field | DataType.Property;
@@ -60,119 +61,124 @@ public class DataConverter
                     total.Add(serialize);
                     length += (ushort)serialize.Length;
                 }
+            if(obj is ISerializeHandler h) h.OnSerialize();
             return Combine(Serialize(length), Combine(total));
         }
         else
         {
             var serialize = converter.Serialize(obj);
+            if(obj is ISerializeHandler h) h.OnSerialize();
             return converter is IStaticDataConverter ? serialize : Combine(Serialize((ushort)serialize.Length), serialize);
         }
     }
 
-    private static ConverterUsing ChangeForNextConverting(ConverterUsing converterUsing)
+    private static ConvertType ChangeForNextConverting(ConvertType converterUsing)
     {
         return converterUsing switch
         {
-            ConverterUsing.ExcludeCurrent => ConverterUsing.All,
-            ConverterUsing.OnlyCurrent => ConverterUsing.ExcludeAll,
+            ConvertType.ExcludeCurrent => ConvertType.All,
+            ConvertType.OnlyCurrent => ConvertType.ExcludeAll,
             _ => converterUsing
         };
     }
 
     
     public static void DeserializeInject(byte[] buffer, object obj, ushort? switcher = null,
-        bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All)
+        bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All)
     {
         ushort index = 0;
         DeserializeInject(buffer, obj, ref index, switcher, excludeNoSwitchers, converterUsing);
     }
-    public static T? Deserialize<T>(byte[] buffer, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All) => (T?)Deserialize(buffer, typeof(T), ref index, switcher, excludeNoSwitchers, converterUsing);
-    public static T? Deserialize<T>(byte[] buffer, ushort? switcher = null, bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All)
+    public static T? Deserialize<T>(byte[] buffer, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All) => (T?)Deserialize(buffer, typeof(T), ref index, switcher, excludeNoSwitchers, converterUsing);
+    public static T? Deserialize<T>(byte[] buffer, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All)
     {
         ushort index = 0;
         return (T?)Deserialize(buffer, typeof(T), ref index, switcher, excludeNoSwitchers, converterUsing);
     }
 
     public static object? Deserialize(byte[] buffer, Type type, ushort? switcher = null,
-        bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All, bool useCtor = true)
+        bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         ushort index = 0;
-        return Deserialize(buffer, type, ref index, switcher, excludeNoSwitchers, converterUsing, useCtor);
+        return Deserialize(buffer, type, ref index, switcher, excludeNoSwitchers, converterUsing, invokeEvents);
     }
-    public static object? Deserialize(byte[] buffer, Type type, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All, bool useCtor = true)
+    public static object? Deserialize(byte[] buffer, Type type, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         if (DataIsNull(buffer, ref index) || type == null)
         {
             index += (ushort)NullBytes.Length;
             return null;
         }
-        var converter = converterUsing is ConverterUsing.ExcludeCurrent or ConverterUsing.ExcludeAll ? null : GetConverterForType(type);
-        if (converter is not null)
+        var converter = converterUsing is ConvertType.ExcludeCurrent or ConvertType.ExcludeAll ? null : GetConverterForType(type);
+        switch (converter)
         {
-            switch (converter)
+            case IDynamicDataConverter:
             {
-                case IDynamicDataConverter:
-                {
-                    var length = Deserialize<ushort>(buffer, ref index);
-                    var des = converter.Deserialize(buffer, index, length, type);
-                    index += length;
-                    return des;
-                }
-                case IStaticDataConverter staticDataConverter:
-                {
-                    var des = converter.Deserialize(buffer, index, staticDataConverter.Length, type);
-                    index += staticDataConverter.Length;
-                    return des;
-                }
+                var length = Deserialize<ushort>(buffer, ref index);
+                var des = converter.Deserialize(buffer, index, length, type);
+                index += length;
+                return des;
+            }
+            case IStaticDataConverter staticDataConverter:
+            {
+                var des = converter.Deserialize(buffer, index, staticDataConverter.Length, type);
+                index += staticDataConverter.Length;
+                return des;
             }
         }
+
         if(!IsAvailableTypeForInstance(type)) return null;
-        object o;
-        if (useCtor)
-        {
-            var infos = type.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            var ctor = infos.FirstOrDefault(c => c.GetCustomAttributes().FirstOrDefault(a => a is ConvertConstructorAttribute) != null);
-            if (ctor is null)
-            {
-                ctor = infos.FirstOrDefault(c => c.GetParameters().Length == 0);
-                o = ctor is null ? FormatterServices.GetUninitializedObject(
-                    type) : ctor.Invoke(null);
-            }
-            else
-            {
-                if(ctor.GetParameters().Length != 1 && ctor.GetParameters()[0].ParameterType == typeof(object))
-                    throw new DeserializeException("ConvertConstructor should has object parameter");
-                o = ctor.Invoke(new object[] { null! });
-            }
-        }
-        else
-            o = FormatterServices.GetUninitializedObject(
-                type);
-        DeserializeInject(buffer, o, ref index, switcher, excludeNoSwitchers, converterUsing);
+        var o = ReflectionUtils.GetConstructor(type)?.Invoke(Array.Empty<object>()) ?? FormatterServices.GetUninitializedObject(type);
+        DeserializeInject(buffer, o, ref index, switcher, excludeNoSwitchers, ChangeForNextConverting(converterUsing), ChangeForNextConverting(invokeEvents));
         return o;
     }
 
 
-    public static void DeserializeInject(byte[] buffer, object obj, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConverterUsing converterUsing = ConverterUsing.All)
+    public static void DeserializeInject(byte[] buffer, object obj, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         var type = obj.GetType();
-        Deserialize<ushort>(buffer, ref index);
         var dataUse = type.GetCustomAttribute<DataConvertUseAttribute>()?.Types ?? DataType.Field | DataType.Property;
-        var nextConverting = ChangeForNextConverting(converterUsing);
+        Deserialize<ushort>(buffer, ref index);
         if(dataUse.HasFlag(DataType.Field))
             foreach (var field in GetFields(type, switcher, excludeNoSwitchers))
             {
-                if(!ValidateValue<DeserializeHandlerAttribute>(obj, field)) continue;
-                if (Deserialize(buffer, field.FieldType, ref index, switcher, excludeNoSwitchers, nextConverting) is not { } des) continue;
-                field.SetValue(obj, des);
+                try
+                {
+                    if(!ValidateValue<DeserializeHandlerAttribute>(obj, field)) continue;
+                    if (Deserialize(buffer, field.FieldType, ref index, switcher, excludeNoSwitchers,
+                            converterUsing) is not { } des) continue;
+                    field.SetValue(obj, des);
+                }
+                catch (TargetInvocationException e)
+                {
+                    throw new DeserializeException($"type: {type.Name} field: {field.Name}\n{e.GetType().Name}: {e.InnerException}");
+                }
+                catch (Exception e)
+                {
+                    throw new DeserializeException($"type: {type.Name} field: {field.Name}\n{e.GetType().Name}: {e.Message}");
+                }
             }
         if(dataUse.HasFlag(DataType.Property))
             foreach (var property in GetProperties(type, switcher, excludeNoSwitchers))
             {
-                if(!ValidateValue<DeserializeHandlerAttribute>(obj, property)) continue;
-                if (Deserialize(buffer, property.PropertyType, ref index, switcher, excludeNoSwitchers, nextConverting) is not { } des) continue;
-                property.SetValue(obj, des);
+                try
+                {
+                    if (!ValidateValue<DeserializeHandlerAttribute>(obj, property)) continue;
+                    if (Deserialize(buffer, property.PropertyType, ref index, switcher, excludeNoSwitchers,
+                            converterUsing) is not { } des) continue;
+                    property.SetValue(obj, des);
+                }
+                catch (TargetInvocationException e)
+                {
+                    throw new DeserializeException($"type: {type.Name} property: {property.Name}\n{e.GetType().Name}: {e.InnerException}");
+                }
+                catch (Exception e)
+                {
+                    throw new DeserializeException($"type: {type.Name} property: {property.Name}\n{e.GetType().Name}: {e.Message}");
+                }
             }
+        if(invokeEvents is not (ConvertType.ExcludeCurrent or ConvertType.ExcludeAll) && obj is IDeserializeHandler handler)
+            handler.OnDeserialize();
     }
 
     private static bool ValidateValue<T>(object obj, FieldInfo field) where T : HandlerAttribute

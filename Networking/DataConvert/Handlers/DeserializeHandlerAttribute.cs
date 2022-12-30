@@ -1,3 +1,5 @@
+using System;
+
 namespace Networking.DataConvert.Handlers;
 
 public class DeserializeHandlerAttribute : HandlerAttribute

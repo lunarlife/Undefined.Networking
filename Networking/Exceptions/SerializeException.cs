@@ -1,6 +1,6 @@
 using System;
 
-namespace Networking.DataConvert.Exceptions;
+namespace Networking.Exceptions;
 
 public class SerializeException : Exception
 {

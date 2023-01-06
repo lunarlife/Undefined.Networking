@@ -6,8 +6,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Networking.DataConvert.Datas;
 using Networking.DataConvert.DataUse;
-using Networking.DataConvert.Exceptions;
 using Networking.DataConvert.Handlers;
+using Networking.Exceptions;
 using Utils;
 
 namespace Networking.DataConvert;
@@ -29,7 +29,7 @@ public class DataConverter
         new BoolConverter(), new DoubleConverter(), new StringConverter(), new FloatConverter(), new IntConverter(),
         new ArrayConverter(), new Dot2Converter(), new Dot2IntConverter(), new VersionConverter(),
         new IdentifierConverter(), new EnumConverter(), new ListConverter(), new UShortConverter(), new TypeConverter(),
-        new PacketConverter(), new FlagsEnumConverter()
+        new PacketConverter(), new FlagsEnumConverter(), new LongConverter(), new UintConverter()
     };
 
 
@@ -96,13 +96,13 @@ public class DataConverter
         return (T?)Deserialize(buffer, typeof(T), ref index, switcher, excludeNoSwitchers, converterUsing);
     }
 
-    public static object? Deserialize(byte[] buffer, Type type, ushort? switcher = null,
+    public static object? Deserialize(byte[] buffer, Type? type, ushort? switcher = null,
         bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         ushort index = 0;
         return Deserialize(buffer, type, ref index, switcher, excludeNoSwitchers, converterUsing, invokeEvents);
     }
-    public static object? Deserialize(byte[] buffer, Type type, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
+    public static object? Deserialize(byte[] buffer, Type? type, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         if (DataIsNull(buffer, ref index) || type == null)
         {
@@ -134,11 +134,12 @@ public class DataConverter
     }
 
 
-    public static void DeserializeInject(byte[] buffer, object obj, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
+    public static void DeserializeInject(byte[] buffer, object? obj, ref ushort index, ushort? switcher = null, bool excludeNoSwitchers = false, ConvertType converterUsing = ConvertType.All, ConvertType invokeEvents = ConvertType.All)
     {
         var type = obj.GetType();
         var dataUse = type.GetCustomAttribute<DataConvertUseAttribute>()?.Types ?? DataType.Field | DataType.Property;
         Deserialize<ushort>(buffer, ref index);
+        converterUsing = ChangeForNextConverting(converterUsing);
         if(dataUse.HasFlag(DataType.Field))
             foreach (var field in GetFields(type, switcher, excludeNoSwitchers))
             {

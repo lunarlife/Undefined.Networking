@@ -6,7 +6,7 @@ using Utils.Events;
 
 namespace Networking
 {
-    public class Server
+    public sealed class Server
     {
         private Socket? _socket;
         private ConnectionType _connectionType = ConnectionType.None;
@@ -18,7 +18,7 @@ namespace Networking
         public bool IsConnectedOrOpened => _connectionType != ConnectionType.None;
 
         public Socket? Socket => _socket;
-
+        public Event<ClientConnectEventData> OnClientConnected { get; } = new();
         public void Connect(IPAddress address, int port)
         {
             if (IsConnectedOrOpened) throw new ServerException("server is connected or opened");
@@ -54,8 +54,8 @@ namespace Networking
                 _socket = socket,
                 _connectionType = ConnectionType.Client,
             };
-            var connectEvent = new ClientConnectEvent(this, client);
-            EventManager.CallEvent(connectEvent);
+            var connectEvent = new ClientConnectEventData(this, client);
+            OnClientConnected.Invoke(connectEvent);
             _socket.BeginAccept(Accept, null);
         }
     }

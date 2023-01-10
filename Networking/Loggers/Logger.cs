@@ -1,3 +1,5 @@
+using System;
+
 namespace Networking.Loggers
 {
 
@@ -6,5 +8,6 @@ namespace Networking.Loggers
         public abstract void Info(string info);
         public abstract void Warning(string warning);
         public abstract void Error(string error);
+        public abstract void Error(Exception e);
     }
 }

@@ -167,7 +167,14 @@ public class DataConverter
                     if (!ValidateValue<DeserializeHandlerAttribute>(obj, property)) continue;
                     if (Deserialize(buffer, property.PropertyType, ref index, switcher, excludeNoSwitchers,
                             converterUsing) is not { } des) continue;
-                    property.SetValue(obj, des);
+                    try
+                    {
+                        property.SetValue(obj, des);
+                    }
+                    catch (TargetException e)
+                    {
+                        throw new DeserializeException($"cannot cast property {property.PropertyType.FullName} to {des.GetType().FullName}");
+                    }
                 }
                 catch (TargetInvocationException e)
                 {

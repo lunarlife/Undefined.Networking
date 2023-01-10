@@ -10,7 +10,6 @@ public class PacketConverter : IDynamicDataConverter
     public byte[] Serialize(object o) =>
         DataConverter.Combine(DataConverter.Serialize(Packet.GetPacketId(o.GetType())),
             DataConverter.Serialize(o, converterUsing: ConvertType.ExcludeCurrent));
-
     public object? Deserialize(byte[] data, Type type)
     {
         ushort index = 0;

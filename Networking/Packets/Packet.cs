@@ -15,7 +15,7 @@ namespace Networking.Packets
             if (_isLoaded) throw new Exception("");
             var packetType = typeof(Packet);
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().OrderBy(a => a.FullName))
-                foreach (var t in assembly.GetTypes().Where(type => type.IsSubclassOf(packetType)).OrderBy(t => t.Name))
+                foreach (var t in assembly.GetTypes().Where(type => !type.IsAbstract && !type.IsInterface && packetType.IsAssignableFrom(type)).OrderBy(t => t.Name))
                     _packetIds.AddMember(t.Name, new PacketId(t));
             _isLoaded = true;
         }

@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using Networking.DataConvert;
 using Networking.Exceptions;
 using Networking.Packets;
 using Utils;
+using Utils.Events;
 
 namespace Networking;
 
@@ -17,9 +19,8 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     private static readonly List<RequestInfo> Requests = new();
     private static bool _isThreadPoolWorking;
     private static bool _isSenderWorking;
-    
-    public delegate void ReceiveHanlder(Packet packet);
-    public event ReceiveHanlder Receive;
+
+    public Event<PacketReceiveEventData> OnReceive { get; } = new();
     public delegate void UnhandledExceptionHandler(Exception exception);
     public event UnhandledExceptionHandler UnhandledException;
 
@@ -173,11 +174,15 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                             var packet = DataConverter.Deserialize<Packet>(buffer, ref readedBytes);
                             readedPackets++;
                             if (packet == null) continue;
-                            reader.Receive?.Invoke(packet);
+                            reader.OnReceive.Invoke(new PacketReceiveEventData(packet));
                             if (Requests.FirstOrDefault(r => r.ReceiveType == packet.GetType()) is not
                                 { } requestInfo) continue;
                             Requests.Remove(requestInfo);
                             requestInfo.Callback?.DynamicInvoke(packet);
+                        }
+                        catch (TargetInvocationException e)
+                        {
+                            reader.UnhandledException?.Invoke(e.InnerException);
                         }
                         catch (Exception e)
                         {

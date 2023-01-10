@@ -1,6 +1,6 @@
 namespace Networking.Packets
 {
-    public class RequestPacket<T> : Packet where T : Packet
+    public abstract class RequestPacket<T> : Packet where T : Packet
     {
     }
 }

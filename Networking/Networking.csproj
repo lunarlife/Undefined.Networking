@@ -4,7 +4,7 @@
         <TargetFramework>netstandard2.1</TargetFramework>
         <ImplicitUsings>disable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <LangVersion>default</LangVersion>
+        <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
@@ -19,7 +19,7 @@
     </ItemGroup>
 
     <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-      <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;C:\Code\Frameworks&quot;&#xA;xcopy /y /d  &quot;C:\Code\Frameworks\Networking.dll&quot; &quot;D:\UndefinedProject\Undefined\Assets\Plugins&quot; " />
+      <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;C:\Code\Frameworks&quot;&#xA;xcopy /y /d  &quot;C:\Code\Frameworks\Networking.dll&quot; &quot;D:\UndefinedProject\Undefined\Assets\Plugins&quot; &#xA;xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;G:\Мой диск\Undefined\Dlls&quot;" />
     </Target>
 
 </Project>

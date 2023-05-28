@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.Serialization;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
-using Networking.DataConvert;
 using Networking.Exceptions;
 using Networking.Packets;
 using Utils;
+using Utils.DataConvert;
+using Utils.Enums;
 using Utils.Events;
+using Utils.Exceptions;
 
 namespace Networking;
 
@@ -16,23 +22,26 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
 {
     private static readonly List<RuntimePacketer> Packeters = new();
     private static readonly List<Thread> Threads = new();
-    private static readonly List<RequestInfo> Requests = new();
+    private static List<RequestInfo> _requests = new();
     private static bool _isThreadPoolWorking;
     private static bool _isSenderWorking;
+    private static bool _isPacketsIndexed;
+    private static Enum<PacketId> _packetIds = new();
 
     public Event<PacketReceiveEventData> OnReceive { get; } = new();
     public delegate void UnhandledExceptionHandler(Exception exception);
     public event UnhandledExceptionHandler UnhandledException;
-
     private readonly Socket _socket;
     private readonly Priority _priority;
-    private readonly Queue<Packet> _packetsToSend = new();
-    private object _sendLock = new();
+    private readonly Queue<object> _packetsToSend = new();
+    private readonly object _sendLock = new();
     private bool _isReading;
 
+    private MemoryStream _stream = new();
+    private readonly object _streamLock = new();
     public bool HasPacketsToSend => _packetsToSend.Count != 0;
-    public static int Tick { get; set; } = 10;
-    public static int MaxClientsCountForThread { get; set; } = 100;
+    public static int Tick { get; set; } = 1;
+    public static int MaxClientsCountForThread { get; set; } = 50;
 
     public static bool IsThreadPoolWorking
     {
@@ -86,8 +95,8 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
 
     public Server Server { get; }
 
-    public static int SendPacketTick { get; set; } = 20;
-    public static int MaxPacketsPerTick { get; set; } = 5;
+    public static int SendPacketTick { get; set; } = 10;
+    public static int MaxPacketsPerTick { get; set; } = 20;
 
     public RuntimePacketer(Server server, Priority priority)
     {
@@ -97,7 +106,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
         _socket = server.Socket!;
     }
         
-    private static void StartSender()
+    private static void StartSender() 
     {
         new Thread(() =>
         {
@@ -107,13 +116,13 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                 for (var i = 0; i < Packeters.Count; i++)
                 {
                     var packeter = Packeters[i];
-                    Packet[] packetsToSend;
+                    object[] packetsToSend;
                     lock (packeter._sendLock)
                     {
                         var count = packeter._packetsToSend.Count < MaxPacketsPerTick
                             ? packeter._packetsToSend.Count
                             : MaxPacketsPerTick;
-                        packetsToSend = new Packet[count];
+                        packetsToSend = new Object[count];
 
                         for (var j = 0; j < count; j++)
                             packetsToSend[j] = packeter._packetsToSend.Dequeue();
@@ -161,33 +170,15 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                     if(i > Packeters.Count - 1) break;
                     var reader = Packeters[i];
                     if (!reader._isReading) continue;
-                    var available = reader._socket.Available;
-                    if (available == 0) continue;
-                    var buffer = new byte[available];
-                    ushort readedBytes = 0;
-                    reader._socket.Receive(buffer);
-                    var readedPackets = 0;
-                    while (readedBytes < available && readedPackets <= MaxPacketsPerTick * 2)
+                    try
                     {
-                        try
-                        {
-                            var packet = DataConverter.Deserialize<Packet>(buffer, ref readedBytes);
-                            readedPackets++;
-                            if (packet == null) continue;
-                            reader.OnReceive.Invoke(new PacketReceiveEventData(packet));
-                            if (Requests.FirstOrDefault(r => r.ReceiveType == packet.GetType()) is not
-                                { } requestInfo) continue;
-                            Requests.Remove(requestInfo);
-                            requestInfo.Callback?.DynamicInvoke(packet);
-                        }
-                        catch (TargetInvocationException e)
-                        {
-                            reader.UnhandledException?.Invoke(e.InnerException);
-                        }
-                        catch (Exception e)
-                        {
-                            reader.UnhandledException?.Invoke(e);
-                        }
+                        reader.ReceiveBuffer();
+                        reader.TryUnpackPacket();
+                        reader.CheckBuffer();
+                    }
+                    catch (Exception e)
+                    {
+                        reader.UnhandledException?.Invoke(e);
                     }
                 }
             }
@@ -198,31 +189,125 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
         thread.Start();
         Threads.Add(thread);
     }
-    private static void SendPacketsNow(RuntimePacketer packeter, params Packet[] packetsToSend)
+
+    private void CheckBuffer()
     {
-        if(!packeter.IsSending || !packeter.Server.IsConnectedOrOpened) return;
-        var bytesEnumerable = packetsToSend.Select(packet => DataConverter.Serialize(packet)).ToArray(); 
-        packeter._socket.Send(DataConverter.Combine(bytesEnumerable));
+        if(_stream.Length == 0) return;
+        var length = (int)(_stream.Length - _stream.Position);
+        if (length > 0)
+        {
+            var buffer = (stackalloc byte[length]);
+            _ = _stream.Read(buffer);
+            _stream = new MemoryStream();
+            _stream.Write(buffer);
+            _stream.Position = 0;
+        }
+        else
+            _stream = new MemoryStream();
+    }
+    private void TryUnpackPacket()
+    {
+        var left = (int)(_stream.Length - _stream.Position);
+        if (left < 2)
+            return;
+        var buffer = (stackalloc byte[2]);
+        _ = _stream.Read(buffer);
+        left -= 2;
+        var packetLength = BitConverter.ToUInt16(buffer);
+        var totalLength = packetLength + 2; //2 bytes for a packet id
+        if (left < totalLength)
+        {
+            _stream.Position -= 2;
+            return;
+        }
+        buffer = (stackalloc byte[2]);
+        _ = _stream.Read(buffer);
+        left -= 2;
+        var packetId = BitConverter.ToUInt16(buffer);
+        buffer = (stackalloc byte[packetLength]);
+        _ = _stream.Read(buffer);
+        left -= packetLength;
+        var packet = DataConverter.Deserialize(buffer, GetPacketType(packetId))!;
+        ApplyPacket(packet);
+        if (left > 2) TryUnpackPacket();
     }
 
-    public void Request<T>(RequestPacket<T> send, Action<T>? callback = null) where T : Packet
+    private static byte[] GetBytes(object packet)
     {
+        var bytes = DataConverter.Serialize(packet);
+        if (bytes.Length > ushort.MaxValue) throw new PacketLengthException();
+        var packetIdBytes = BitConverter.GetBytes(GetPacketId(packet.GetType()));
+        var lengthBytes = BitConverter.GetBytes((ushort)bytes.Length);
+        var buffer = new byte[bytes.Length + 4];
+        lengthBytes.CopyTo(buffer, 0);
+        packetIdBytes.CopyTo(buffer, 2);
+        bytes.CopyTo(buffer,4);
+        return buffer;
+    }
+
+    private void ReceiveBuffer()
+    {
+        var length = _socket.Available;
+        if (length == 0) return;
+        var buffer = (stackalloc byte[length]);
+        _socket.Receive(buffer);
+        _stream.Position = _stream.Length;
+        _stream.Write(buffer);
+        _stream.Position = 0;
+    }
+
+    private void ApplyPacket(object packet)
+    {
+        var type = packet.GetType();
+        OnReceive.Invoke(new PacketReceiveEventData(packet));
+        if (_requests.FirstOrDefault(r => r.ReceiveType == type) is not
+            { } requestInfo) return;
+        _requests.Remove(requestInfo);
+        requestInfo.Callback?.DynamicInvoke(packet);
+    }
+    private static void SendPacketsNow(RuntimePacketer packeter, IEnumerable<object> packetsToSend)
+    {
+        if(!packeter.IsSending || !packeter.Server.IsConnectedOrOpened) return;
+        var totalLength = 0;
+        var bytes = new List<byte[]>();
+        foreach (var o in packetsToSend)
+        {
+            var b = GetBytes(o);
+            totalLength += b.Length;
+            bytes.Add(b);
+        }
+        var buffer = new byte[totalLength];
+        var index = 0;
+        for (var i = 0; i < bytes.Count; i++)
+        {
+            bytes[i].CopyTo(buffer, index);
+            index += bytes[i].Length;
+        }
+        packeter._socket.Send(buffer, SocketFlags.None);
+    }
+
+    public void Request<T, T1>(T send, Action<T1>? callback = null) 
+        where T : struct 
+        where T1 : struct
+    {
+        if (typeof(T).GetCustomAttribute<RequestPacketAttribute>() is not { } att || att.RequestType != typeof(T1))
+            throw new InvalidPacketException();
         SendPacketNow(send);
-        Requests.Add(new RequestInfo
+        _requests.Add(new RequestInfo
         {
             Callback = callback,
             ReceiveType = typeof(T)
         });
     }
 
-    public void SendPacket(params Packet[] packets)
+    public void SendPacket<T>(T packet) where T : struct
     {
         lock(_sendLock)
-            foreach (var p in packets) _packetsToSend.Enqueue(p);
+            _packetsToSend.Enqueue(packet);
     }
-    public void SendPacketNow(params Packet[] packets)
+    public void SendPacketNow<T>(params T[] packets) where T : struct
     {
-        SendPacketsNow(this, packets);
+        SendPacketsNow(this, packets.Cast<object>());
     }
         
     public bool Equals(RuntimePacketer other)
@@ -251,6 +336,23 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
         if (ReferenceEquals(null, other)) return 1;
         return _priority.CompareTo(other._priority);
     }
+
+    public static void LoadPackets()
+    {
+        if (_isPacketsIndexed) throw new Exception("");
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().OrderBy(a => a.FullName))
+        foreach (var t in assembly.GetTypes().Where(type => type.IsValueType &&
+                                                            (type.GetCustomAttribute<PacketAttribute>(
+                                                                 true) is not null ||
+                                                             type.GetCustomAttribute<RequestPacketAttribute>(true) is
+                                                                 not null)).OrderBy(t => t.Name))
+            _packetIds.AddMember(t.Name, new PacketId(t));
+        _isPacketsIndexed = true;
+    }
+
+    private static Type GetPacketType(ushort id) => _packetIds.Count <= id ? throw new Exception("unknown id " + id) : _packetIds[id].Type;
+    private static ushort GetPacketId(Type type) => (ushort)_packetIds[type.Name].ID;
+    private bool CheckIsValidPacket(object p) => p.GetType().GetCustomAttribute<PacketAttribute>(true) is null ? throw new InvalidPacketException() : true;
     private class RequestInfo
     {
         public Type ReceiveType;

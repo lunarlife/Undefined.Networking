@@ -4,9 +4,9 @@ namespace Networking.Packets;
 
 public class PacketReceiveEventData : EventData
 {
-    public Packet Packet { get; }
+    public object Packet { get; }
 
-    public PacketReceiveEventData(Packet packet)
+    public PacketReceiveEventData(object packet)
     {
         Packet = packet;
     }

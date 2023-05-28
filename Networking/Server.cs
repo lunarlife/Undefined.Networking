@@ -31,7 +31,8 @@ namespace Networking
         {
             if (!IsConnectedOrOpened) throw new ServerException("server is not connected or opened");
             _connectionType = ConnectionType.None;
-            _socket!.Shutdown(SocketShutdown.Both);
+            if(_socket!.Connected)
+                _socket!.Shutdown(SocketShutdown.Both);
         }
 
         public void OpenServer(IPAddress address, int port)

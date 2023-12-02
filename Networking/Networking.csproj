@@ -14,12 +14,12 @@
 
     <ItemGroup>
       <Reference Include="Utils">
-        <HintPath>C:\Code\Frameworks\Utils.dll</HintPath>
+        <HintPath>C:\Frameworks\Utils.dll</HintPath>
       </Reference>
     </ItemGroup>
 
     <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-      <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;C:\Code\Frameworks&quot;&#xA;xcopy /y /d  &quot;C:\Code\Frameworks\Networking.dll&quot; &quot;D:\UndefinedProject\Undefined\Assets\Plugins&quot; &#xA;xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;G:\Мой диск\Undefined\Dlls&quot;" />
+      <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Networking.dll&quot; &quot;C:\Frameworks&quot;&#xA;xcopy /y /d  &quot;C:\Frameworks\Networking.dll&quot; &quot;C:\UndefinedProject\Undefined\Plugins&quot;" />
     </Target>
 
 </Project>

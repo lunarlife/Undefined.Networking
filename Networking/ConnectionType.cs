@@ -1,10 +1,8 @@
-namespace Networking
-{
+namespace Networking;
 
-    public enum ConnectionType
-    {
-        None,
-        OpenServer,
-        Client
-    }
+public enum ConnectionType
+{
+    None,
+    OpenServer,
+    Client
 }

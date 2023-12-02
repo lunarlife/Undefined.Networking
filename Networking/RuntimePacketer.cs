@@ -7,7 +7,6 @@ using System.Reflection;
 using System.Threading;
 using Networking.Exceptions;
 using Networking.Packets;
-using Utils;
 using Utils.DataConvert;
 using Utils.Enums;
 using Utils.Events;
@@ -19,13 +18,13 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     private static readonly List<RuntimePacketer> Packeters = new(100);
     private static readonly object PacketersLock = new();
     private static readonly List<Thread> Threads = new(capacity: 10);
-    private static List<RequestInfo> _requests = new(20);
+    private static readonly List<RequestInfo> Requests = new(20);
     private static bool _isThreadPoolWorking;
     private static bool _isSenderWorking;
     private static bool _isPacketsIndexed;
-    private static Enum<PacketId> _packetIds = new();
+    private static readonly Enum<PacketId> PacketIds = new();
     public DataConverter Converter { get; }
-    public Event<PacketReceiveEventData> OnReceive { get; } = new();
+
 
     public delegate void UnhandledExceptionHandler(Exception exception);
 
@@ -38,41 +37,14 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
 
     private MemoryStream _stream = new();
     private readonly object _streamLock = new();
+    private readonly Event<PacketReceiveEventArgs> _onReceive = new();
     public bool HasPacketsToSend => _packetsToSend.Count != 0;
     public static int Tick { get; set; } = 1;
     public static int MaxClientsCountForThread { get; set; } = 50;
 
+    public IEventAccess<PacketReceiveEventArgs> OnReceive => _onReceive.Access;
 
-    public void Run()
-    {
-        _isWorking = _isWorking ? throw new PacketerException("Packeter already working") : true;
-        lock (PacketersLock)
-            Packeters.Add(this);
-        if (!_isThreadPoolWorking)
-        {
-            _isThreadPoolWorking = true;
-            CheckReceiveThreads();
-        }
-
-        if (!_isSenderWorking)
-        {
-            _isSenderWorking = true;
-            StartSender();
-        }
-    }
-
-    public void Stop()
-    {
-        _isWorking = _isWorking ? false : throw new PacketerException("Packeter is not working");
-        lock (PacketersLock)
-        {
-            Packeters.Remove(this);
-            if (Packeters.Count != 0) return;
-        }
-
-        _isSenderWorking = false;
-        _isThreadPoolWorking = false;
-    }
+   
 
     public Server Server { get; }
 
@@ -125,7 +97,36 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
             }
         }).Start();
     }
+    public void Run()
+    {
+        _isWorking = _isWorking ? throw new PacketerException("Packeter already working") : true;
+        lock (PacketersLock)
+            Packeters.Add(this);
+        if (!_isThreadPoolWorking)
+        {
+            _isThreadPoolWorking = true;
+            CheckReceiveThreads();
+        }
 
+        if (!_isSenderWorking)
+        {
+            _isSenderWorking = true;
+            StartSender();
+        }
+    }
+
+    public void Stop()
+    {
+        _isWorking = _isWorking ? false : throw new PacketerException("Packeter is not working");
+        lock (PacketersLock)
+        {
+            Packeters.Remove(this);
+            if (Packeters.Count != 0) return;
+        }
+
+        _isSenderWorking = false;
+        _isThreadPoolWorking = false;
+    }
     private static void CheckReceiveThreads()
     {
         var threadsCount = MathF.Ceiling((float)Packeters.Count / MaxClientsCountForThread) == 0
@@ -163,7 +164,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                     }
                     catch (Exception e)
                     {
-                        reader.UnhandledException?.Invoke(e);
+                        reader.UnhandledException.Invoke(e);
                     }
                 }
             }
@@ -249,11 +250,11 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     private void ApplyPacket(object packet)
     {
         var type = packet.GetType();
-        OnReceive.Invoke(new PacketReceiveEventData(packet));
-        foreach (var request in _requests)
+        _onReceive.Raise(new PacketReceiveEventArgs(packet));
+        foreach (var request in Requests)
         {
             if (request.ReceiveType != type) continue;
-            _requests.Remove(request);
+            Requests.Remove(request);
             request.Callback?.DynamicInvoke(packet);
         }
     }
@@ -278,7 +279,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
         if (typeof(T).GetCustomAttribute<RequestPacketAttribute>() is not { } att || att.RequestType != typeof(T1))
             throw new InvalidPacketException();
         SendPacketsNow(send);
-        _requests.Add(new RequestInfo
+        Requests.Add(new RequestInfo
         {
             Callback = callback,
             ReceiveType = typeof(T)
@@ -345,13 +346,13 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                                                                  true) is not null ||
                                                              type.GetCustomAttribute<RequestPacketAttribute>(true) is
                                                                  not null)).OrderBy(t => t.Name))
-            _packetIds.AddMember(t.Name, new PacketId(t));
+            PacketIds.AddMember(t.Name, new PacketId(t));
     }
 
     private static Type GetPacketType(ushort id) =>
-        _packetIds.Count <= id ? throw new Exception("unknown id " + id) : _packetIds[id].Type;
+        PacketIds.Count <= id ? throw new Exception("unknown id " + id) : PacketIds[id].Type;
 
-    private static ushort GetPacketId(Type type) => (ushort)_packetIds[type.Name].ID;
+    private static ushort GetPacketId(Type type) => (ushort)PacketIds[type.Name].ID;
 
     private bool CheckIsValidPacket(object p) => p.GetType().GetCustomAttribute<PacketAttribute>(true) is null
         ? throw new InvalidPacketException()

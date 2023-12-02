@@ -2,11 +2,11 @@ using Utils.Events;
 
 namespace Networking.Packets;
 
-public class PacketReceiveEventData : EventData
+public class PacketReceiveEventArgs : IEventArgs
 {
     public object Packet { get; }
 
-    public PacketReceiveEventData(object packet)
+    public PacketReceiveEventArgs(object packet)
     {
         Packet = packet;
     }

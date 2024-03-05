@@ -1,6 +1,6 @@
-using Utils.Events;
+using Undefined.Events;
 
-namespace Networking.Packets;
+namespace Networking.Events;
 
 public class PacketReceiveEventArgs : IEventArgs
 {

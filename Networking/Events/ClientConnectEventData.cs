@@ -1,4 +1,4 @@
-using Utils.Events;
+using Undefined.Events;
 
 namespace Networking.Events;
 

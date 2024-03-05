@@ -5,11 +5,11 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
+using Networking.Events;
 using Networking.Exceptions;
 using Networking.Packets;
-using Utils.DataConvert;
-using Utils.Enums;
-using Utils.Events;
+using Undefined.Events;
+using Undefined.Serializer;
 
 namespace Networking;
 
@@ -22,7 +22,8 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     private static bool _isThreadPoolWorking;
     private static bool _isSenderWorking;
     private static bool _isPacketsIndexed;
-    private static readonly Enum<PacketId> PacketIds = new();
+    private static readonly Dictionary<int, PacketId> PacketIds = new();
+    private static readonly Dictionary<Type, PacketId> PacketTypes = new();
     public DataConverter Converter { get; }
 
 
@@ -43,9 +44,6 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     public static int MaxClientsCountForThread { get; set; } = 50;
 
     public IEventAccess<PacketReceiveEventArgs> OnReceive => _onReceive.Access;
-
-   
-
     public Server Server { get; }
 
     public static int SendPacketTick { get; set; } = 10;
@@ -158,7 +156,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
                         lock (reader._streamLock)
                         {
                             reader.ReceiveBuffer();
-                            reader.TryUnpackPacket();
+                            reader.UnpackPackets();
                             reader.CheckBuffer();
                         }
                     }
@@ -192,7 +190,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
             _stream = new MemoryStream();
     }
 
-    private void TryUnpackPacket()
+    private void UnpackPackets()
     {
         while (true)
         {
@@ -201,7 +199,7 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
             var buffer = (stackalloc byte[2]);
             _ = _stream.Read(buffer);
             left -= 2;
-            var packetLength = Converter.Deserialize<ushort>(ref buffer);
+            var packetLength = Converter.Deserialize<ushort>(buffer);
             var totalLength = packetLength + 2; //2 bytes for a packet id
             if (left < totalLength)
             {
@@ -212,11 +210,11 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
             buffer = (stackalloc byte[3]);
             _ = _stream.Read(buffer);
             left -= 2;
-            var packetId = Converter.Deserialize<ushort>(ref buffer);
+            var packetId = Converter.Deserialize<ushort>(buffer);
             buffer = (stackalloc byte[packetLength]);
             _ = _stream.Read(buffer);
             left -= packetLength;
-            var packet = Converter.Deserialize(GetPacketType(packetId), ref buffer)!;
+            var packet = Converter.Deserialize(GetPacketType(packetId), buffer)!;
             ApplyPacket(packet);
             if (left > 2) continue;
             break;
@@ -340,19 +338,24 @@ public sealed class RuntimePacketer : IEquatable<RuntimePacketer>, IComparable<R
     {
         if (_isPacketsIndexed) throw new Exception("Packets already indexed.");
         _isPacketsIndexed = true;
+        var i = 0;
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().OrderBy(a => a.FullName))
         foreach (var t in assembly.GetTypes().Where(type => type.IsValueType &&
                                                             (type.GetCustomAttribute<PacketAttribute>(
                                                                  true) is not null ||
                                                              type.GetCustomAttribute<RequestPacketAttribute>(true) is
                                                                  not null)).OrderBy(t => t.Name))
-            PacketIds.AddMember(t.Name, new PacketId(t));
+        {
+            PacketIds.Add(i, new PacketId(t, i));
+            PacketTypes.Add(t, new PacketId(t, i));
+            i++;
+        }
     }
 
     private static Type GetPacketType(ushort id) =>
         PacketIds.Count <= id ? throw new Exception("unknown id " + id) : PacketIds[id].Type;
 
-    private static ushort GetPacketId(Type type) => (ushort)PacketIds[type.Name].ID;
+    private static ushort GetPacketId(Type type) => (ushort)PacketTypes[type].Id;
 
     private bool CheckIsValidPacket(object p) => p.GetType().GetCustomAttribute<PacketAttribute>(true) is null
         ? throw new InvalidPacketException()

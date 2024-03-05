@@ -10,11 +10,12 @@
 
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+      <PackageReference Include="Undefined.Events" Version="1.0.3" />
     </ItemGroup>
 
     <ItemGroup>
-      <Reference Include="Utils">
-        <HintPath>C:\Frameworks\Utils.dll</HintPath>
+      <Reference Include="Undefined.Serializer">
+        <HintPath>..\..\Undefined.Serializer.dll</HintPath>
       </Reference>
     </ItemGroup>
 

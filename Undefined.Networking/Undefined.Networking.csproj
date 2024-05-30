@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>preview</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <TargetFrameworks>net7.0;net8.0;net9.0;netstandard2.1</TargetFrameworks>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Title>Undefined.Networking</Title>
+        <Description>Beautiful and very useful client-server API</Description>
+
+        <Copyright>Copyright © LunarLife 2023</Copyright>
+        <PackageProjectUrl>https://github.com/lunarlife/Undefined.Networking</PackageProjectUrl>
+        <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryUrl>https://github.com/lunarlife/Undefined.Networking</RepositoryUrl>
+        <RepositoryType>https://github.com/lunarlife/Undefined.Networking</RepositoryType>
+        <PackageTags>server client undefined socket</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
+        <PackageReference Include="Undefined.Events" Version="1.0.4"/>
+        <PackageReference Include="Undefined.Serializer" Version="2.0.0"/>
+        <PackageReference Include="Undefined.Verify" Version="1.0.0"/>
+        <None Include="../LICENSE.txt" Pack="true" PackagePath=""/>
+        <None Include="../README.md" Pack="true" PackagePath=""/>
+    </ItemGroup>
+
+    <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+        <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Undefined.Networking.dll&quot; &quot;C:\Frameworks&quot;"/>
+    </Target>
+
+</Project>

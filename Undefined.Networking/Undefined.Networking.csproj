@@ -17,6 +17,7 @@
         <RepositoryUrl>https://github.com/lunarlife/Undefined.Networking</RepositoryUrl>
         <RepositoryType>https://github.com/lunarlife/Undefined.Networking</RepositoryType>
         <PackageTags>server client undefined socket</PackageTags>
+        <Version>1.0.1</Version>
     </PropertyGroup>
 
     <ItemGroup>

@@ -1,13 +1,14 @@
 using Undefined.Events;
+using Undefined.Networking.Packets;
 
 namespace Undefined.Networking.Events;
 
 public class PacketReceiveEventArgs : IEventArgs
 {
-    public object Packet { get; }
+    public IPacket Packet { get; }
     public Packer Packer { get; }
 
-    public PacketReceiveEventArgs(object packet, Packer packer)
+    public PacketReceiveEventArgs(IPacket packet, Packer packer)
     {
         Packet = packet;
         Packer = packer;

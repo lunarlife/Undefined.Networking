@@ -17,19 +17,14 @@
         <RepositoryUrl>https://github.com/lunarlife/Undefined.Networking</RepositoryUrl>
         <RepositoryType>https://github.com/lunarlife/Undefined.Networking</RepositoryType>
         <PackageTags>server client undefined socket</PackageTags>
-        <Version>1.0.1</Version>
+        <Version>1.0.2</Version>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Undefined.Events" Version="1.0.4"/>
+        <PackageReference Include="Undefined.Events" Version="1.1.0" />
         <PackageReference Include="Undefined.Serializer" Version="2.0.0"/>
-        <PackageReference Include="Undefined.Verify" Version="1.0.4" />
+        <PackageReference Include="Undefined.Verify" Version="2.0.0" />
         <None Include="../LICENSE.txt" Pack="true" PackagePath=""/>
         <None Include="../README.md" Pack="true" PackagePath=""/>
     </ItemGroup>
-
-    <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-        <Exec Command="xcopy /y /d  &quot;$(ProjectDir)$(OutDir)\Undefined.Networking.dll&quot; &quot;C:\Frameworks&quot;"/>
-    </Target>
-
 </Project>

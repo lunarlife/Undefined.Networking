@@ -51,7 +51,7 @@ public abstract class PacketType
     public bool IsUShortPacketId => (Flags & PacketInfoFlags.IsUShortLength) != 0;
     public Type Type { get; }
     public abstract PacketPurpose Purpose { get; }
-    public ushort Id { get; }
+    public ushort Id { get; internal set; }
     public ICustomSerializer? Serializer { get; }
 
     internal PacketType(Type type, ushort id, ICustomSerializer? serializer)

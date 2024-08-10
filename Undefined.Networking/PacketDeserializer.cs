@@ -18,32 +18,30 @@ internal sealed class PacketDeserializer : IDisposable
     private readonly Event<RequestEventArgs> _onRequest = new();
     private readonly Event<ResponseEventArgs> _onResponse = new();
     private readonly Event<PackerExceptionEventArgs> _onUnhandledException = new();
+    private readonly Server _server;
     private readonly Packer _packer;
-    private readonly object _packetsSendQueueWaitingLock = new();
-    private readonly Queue<IPacketData> _packetsToSend = [];
-    private readonly object _packetsWaitingLock = new(); 
     private readonly Buffer _packetTempBuffer;
-    private readonly BufferWriter _packetTempWriter;
-
     private readonly Buffer _receiveBuffer;
+    private readonly Buffer _sendBuffer;
+    private readonly BufferWriter _packetTempWriter;
     private readonly BufferReader _receiveReader;
     private readonly BufferWriter _receiveWriter;
-    private readonly Dictionary<int, RequestData> _requests = [];
-    private readonly Buffer _sendBuffer;
-
-    private readonly object _sendBufferLock = new();
     private readonly BufferWriter _sendWriter;
-    private readonly Server _server;
+    private readonly Queue<IPacketData> _packetsToSend = [];
+    private readonly Dictionary<int, RequestData> _requests = [];
     private readonly List<PacketWaitInfo> _waitingPackets = [];
+    private readonly object _sendBufferLock = new();
+    private readonly object _packetsSendQueueWaitingLock = new();
+    private readonly object _packetsWaitingLock = new(); 
+    
     private int _availableData;
-
     private ushort _lastRequestId;
 
     public IEventAccess<PacketReceiveEventArgs> OnReceive => _onReceive.Access;
     public IEventAccess<ResponseEventArgs> OnResponse => _onResponse.Access;
     public IEventAccess<RequestEventArgs> OnRequest => _onRequest.Access;
     public IEventAccess<PackerExceptionEventArgs> OnUnhandledException => _onUnhandledException.Access;
-
+    
     public int MaxPacketsPerTick { get; set; } = 20;
 
 
@@ -71,8 +69,6 @@ internal sealed class PacketDeserializer : IDisposable
     {
         _availableData += _server.Socket!.Receive(_receiveWriter);
         while (TryUnpackPacket(out var read)) _availableData -= read;
-
-        //when packet received not fully we are move buffer position back to a packet start
         _receiveWriter.Position = _receiveReader.Position = _availableData;
     }
 
@@ -102,7 +98,7 @@ internal sealed class PacketDeserializer : IDisposable
                 throw new ResponseException($"Received response for not exist request {requestId}.");
             }
 
-            packetType = Packer.GetPacketType(((RequestPacketType)request.Type).ResponseType);
+            packetType = Indexer.GetPacketType(((RequestPacketType)request.Type).ResponseType);
             if (packetType.Purpose != PacketPurpose.Response)
             {
                 _server.Close();
@@ -124,7 +120,7 @@ internal sealed class PacketDeserializer : IDisposable
         read += packetLength;
         if (packetType.Purpose == PacketPurpose.Request)
         {
-            var type = (ResponsePacketType)Packer.GetPacketType(((RequestPacketType)packetType).ResponseType);
+            var type = (ResponsePacketType)Indexer.GetPacketType(((RequestPacketType)packetType).ResponseType);
             var args = new RequestEventArgs((IRequest)packet,
                 type,
                 requestId);
@@ -165,7 +161,7 @@ internal sealed class PacketDeserializer : IDisposable
             return false;
         }
 
-        packetType = Packer.GetPacketType(packetIdLength == sizeof(byte)
+        packetType = Indexer.GetPacketType(packetIdLength == sizeof(byte)
             ? _receiveReader.Read()
             : _receiveReader.Read<ushort>());
         if (packetType is ResponsePacketType)
@@ -196,7 +192,7 @@ internal sealed class PacketDeserializer : IDisposable
             packetLengthType = typeof(byte);
         }
 
-        //Trying to serialize a packet length
+        //Trying to deserialize a packet length
         if (lengthOfPacketLength == sizeof(byte))
             packetLength = _receiveReader.Read();
         else if (_receiveReader.Left < lengthOfPacketLength)
@@ -241,7 +237,7 @@ internal sealed class PacketDeserializer : IDisposable
 
     public void AddPacketToSendQueue(IPacket packet, bool compressed)
     {
-        var type = Packer.GetPacketType(packet.GetType());
+        var type = Indexer.GetPacketType(packet.GetType());
         var data = new PacketData(packet, type, compressed);
         AddPacketDataToSendQueue(data);
     }
@@ -258,7 +254,7 @@ internal sealed class PacketDeserializer : IDisposable
     public void Request(IRequest packet, bool compressed, Delegate? callback, int timeoutMs)
     {
         var objectType = packet.GetType();
-        if (Packer.GetPacketType(objectType) is not RequestPacketType type)
+        if (Indexer.GetPacketType(objectType) is not RequestPacketType type)
             throw new PackerException($"Type {objectType.FullName} is not request packet.");
 
         lock (_packetsSendQueueWaitingLock)
@@ -291,7 +287,7 @@ internal sealed class PacketDeserializer : IDisposable
             }
             catch (SocketException)
             {
-                _packer.Close();
+                _packer.Deactivate();
                 _onUnhandledException.Raise(
                     new PackerExceptionEventArgs(new PackerException("Client lost connection to the server.")));
             }
@@ -336,7 +332,7 @@ internal sealed class PacketDeserializer : IDisposable
 
             //Packet length
             if ((flags & PacketInfoFlags.IsIntLength) != 0)
-                _sendWriter.Write((int)packetLength, false);
+                _sendWriter.Write(packetLength, false);
             else if ((flags & PacketInfoFlags.IsUShortLength) != 0)
                 _sendWriter.Write((ushort)packetLength, false);
             else

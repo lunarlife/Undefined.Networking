@@ -8,10 +8,11 @@ namespace Undefined.Networking;
 
 public sealed class Server : IDisposable
 {
-    private readonly Event<ClientConnectEventData> _onClientConnected = new();
+    private readonly Event<ClientConnectEventArgs> _onClientConnected = new();
 
     public ConnectionType ConnectionType { get; private set; } = ConnectionType.None;
-
+    public ProtocolType ProtocolType { get; private set; } = ProtocolType.Unknown;
+    
     public IPAddress? Address => IsConnectedOrOpened
         ? (Socket!.RemoteEndPoint as IPEndPoint)!.Address.MapToIPv4()
         : throw new ServerException("Server is closed.");
@@ -24,7 +25,7 @@ public sealed class Server : IDisposable
 
     public Socket? Socket { get; private set; }
 
-    public IEventAccess<ClientConnectEventData> OnClientConnected => _onClientConnected.Access;
+    public IEventAccess<ClientConnectEventArgs> OnClientConnected => _onClientConnected.Access;
 
     public void Dispose()
     {
@@ -33,11 +34,12 @@ public sealed class Server : IDisposable
         Socket?.Dispose();
     }
 
-    public void Connect(IPAddress address, int port)
+    public void Connect(IPAddress address, int port, ProtocolType protocolType = ProtocolType.Tcp)
     {
         if (IsConnectedOrOpened) throw new ServerException("Server is connected or opened.");
         ConnectionType = ConnectionType.Client;
-        Socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+        ProtocolType = protocolType;
+        Socket = new Socket(SocketType.Stream, protocolType);
         Socket.Connect(address, port);
     }
 
@@ -45,15 +47,17 @@ public sealed class Server : IDisposable
     {
         if (!IsConnectedOrOpened) throw new ServerException("Server is not connected or opened.");
         ConnectionType = ConnectionType.None;
+        ProtocolType = ProtocolType.Unknown;
         if (Socket!.Connected)
             Socket!.Shutdown(SocketShutdown.Both);
     }
 
-    public void OpenServer(IPAddress address, int port)
+    public void OpenServer(IPAddress address, int port, ProtocolType protocolType = ProtocolType.Tcp)
     {
         if (IsConnectedOrOpened) throw new ServerException("Server is connected or opened.");
         ConnectionType = ConnectionType.OpenServer;
-        Socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+        ProtocolType = protocolType;
+        Socket = new Socket(SocketType.Stream, protocolType);
         Socket.Bind(new IPEndPoint(address, port));
         Socket.Listen(0);
         Socket.BeginAccept(Accept, null);
@@ -70,7 +74,7 @@ public sealed class Server : IDisposable
             Socket = socket,
             ConnectionType = ConnectionType.Client
         };
-        var connectEvent = new ClientConnectEventData(this, client);
+        var connectEvent = new ClientConnectEventArgs(this, client);
         _onClientConnected.Raise(connectEvent);
         Socket.BeginAccept(Accept, null);
     }

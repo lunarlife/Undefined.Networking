@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Threading;
 using Undefined.Events;
 using Undefined.Networking.Events;
@@ -15,44 +13,71 @@ namespace Undefined.Networking;
 
 public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer>
 {
-    private static readonly List<Packer> Packers = new(100);
+    private static readonly List<Packer> ActivePackers = [];
     private static readonly object PackersLock = new();
-    private static readonly List<Thread> Threads = new(10);
-    private static bool _isThreadPoolWorking;
+    private static readonly List<Thread> ReceiveThreads = [];
+    private static bool _isReceiverWorking;
     private static bool _isSenderWorking;
-    private static readonly List<PacketType> PacketIds = [];
-    private static readonly Dictionary<Type, PacketType> PacketTypes = [];
-    private static bool _isPacketsIndexed;
-    private readonly PacketDeserializer _deserializer;
+    private static int _maxClientsCountPerThread = 50;
+    private static int _receiveTick = 1;
+    private static int _sendTick = 10;
 
+    public static int MaxClientsCountPerThread
+    {
+        get => _maxClientsCountPerThread;
+        set
+        {
+            Verifying.Min(value, 1);
+            _maxClientsCountPerThread = value;
+        }
+    }
+
+    public static int SendPacketTick
+    {
+        get => _sendTick;
+        set
+        {
+            Verifying.Min(value, 0);
+            _sendTick = value;
+        }
+    }
+
+    public static int ReceiveTick
+    {
+        get => _receiveTick;
+        set
+        {
+            Verifying.Min(value, 0);
+            _receiveTick = value;
+        }
+    }
+
+    private readonly PacketDeserializer _deserializer;
     private readonly Priority _priority;
     private readonly Socket _socket;
-
-    private bool _isWorking;
-
-    public DataConverter Converter { get; }
-    public static int Tick { get; set; } = 1;
-    public static int MaxClientsCountPerThread { get; set; } = 50;
+    private bool _isActivated;
 
     public IEventAccess<PacketReceiveEventArgs> OnReceive => _deserializer.OnReceive;
     public IEventAccess<RequestEventArgs> OnRequest => _deserializer.OnRequest;
-    public Server Server { get; }
 
-    public static int SendPacketTick { get; set; } = 10;
+    public DataConverter Converter { get; }
+    public Server Server { get; }
+    public bool IsActivated => _isActivated;
+    public IEventAccess<PackerExceptionEventArgs> OnUnhandledException => _deserializer.OnUnhandledException;
 
     public int MaxPacketsPerTick
     {
         get => _deserializer.MaxPacketsPerTick;
-        set => _deserializer.MaxPacketsPerTick = value;
+        set
+        {
+            Verifying.Min(value, 1);
+            _deserializer.MaxPacketsPerTick = value;
+        }
     }
-
-    public IEventAccess<PackerExceptionEventArgs> OnUnhandledException => _deserializer.OnUnhandledException;
-
 
     public Packer(Server server, Priority priority = Priority.Normal, DataConverter? converter = null)
     {
         if (!server.IsConnectedOrOpened) throw new ReaderException("The connection is closed.");
-        if (!_isPacketsIndexed) ReindexPackets();
         _priority = priority;
         Converter = converter ?? DataConverter.GetDefault();
         Server = server;
@@ -82,36 +107,18 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
     }
 
 
-    private static void StartSender()
+    public void Activate()
     {
-        new Thread(() =>
-        {
-            while (_isSenderWorking)
-            {
-                Thread.Sleep(SendPacketTick);
-                for (var i = 0; i < Packers.Count; i++)
-                {
-                    var packers = Packers[i];
-                    packers._deserializer.SendPackets();
-                }
-            }
-        })
-        {
-            Name = "Send Packer Thread"
-        }.Start();
-    }
-
-    public void Open()
-    {
-        _isWorking = _isWorking ? throw new PackerException("Packer already working") : true;
+        CheckIsPacketsIndexed();
+        _isActivated = _isActivated ? throw new PackerException("Packer already activated.") : true;
         lock (PackersLock)
         {
-            Packers.Add(this);
+            ActivePackers.Add(this);
         }
 
-        if (!_isThreadPoolWorking)
+        if (!_isReceiverWorking)
         {
-            _isThreadPoolWorking = true;
+            _isReceiverWorking = true;
             CheckReceiveThreads();
         }
 
@@ -120,25 +127,26 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         StartSender();
     }
 
-    public void Close()
+    public void Deactivate()
     {
-        _isWorking = _isWorking ? false : throw new PackerException("Packer is not working.");
+        CheckIsActivated();
+        _isActivated = false;
         lock (PackersLock)
         {
-            Packers.Remove(this);
-            if (Packers.Count != 0) return;
+            ActivePackers.Remove(this);
+            if (ActivePackers.Count != 0) return;
         }
 
         _isSenderWorking = false;
-        _isThreadPoolWorking = false;
+        _isReceiverWorking = false;
     }
 
     private static void CheckReceiveThreads()
     {
-        var threadsCount = MathF.Ceiling((float)Packers.Count / MaxClientsCountPerThread) == 0
+        var threadsCount = MathF.Ceiling((float)ActivePackers.Count / MaxClientsCountPerThread) == 0
             ? 1
-            : MathF.Ceiling((float)Packers.Count / MaxClientsCountPerThread);
-        for (var i = Threads.Count; i < threadsCount; i++) StartReceiveThread(i);
+            : MathF.Ceiling((float)ActivePackers.Count / MaxClientsCountPerThread);
+        for (var i = ReceiveThreads.Count; i < threadsCount; i++) StartReceiveThread(i);
     }
 
     private static void StartReceiveThread(int id)
@@ -146,19 +154,22 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         var thread = new Thread(() =>
         {
             var startIndex = id * MaxClientsCountPerThread;
-            while (_isThreadPoolWorking)
+            while (_isReceiverWorking)
             {
-                if (startIndex > Packers.Count)
+                if (startIndex > ActivePackers.Count)
                     break;
                 CheckReceiveThreads();
-                Thread.Sleep(Tick);
+                Thread.Sleep(ReceiveTick);
                 for (var i = startIndex;
                      i < startIndex + MaxClientsCountPerThread;
                      i++)
                 {
-                    if (i > Packers.Count - 1) break;
-                    var reader = Packers[i];
-                    if (!reader._isWorking) continue;
+                    if (!Indexer.IsIndexed)
+                        break;
+
+                    if (i > ActivePackers.Count - 1) break;
+                    var reader = ActivePackers[i];
+                    if (!reader._isActivated) continue;
                     reader._deserializer.ReceiveAll();
                 }
             }
@@ -167,13 +178,48 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
             Name = $"Receive Packer Thread {id}"
         };
         thread.Start();
-        Threads.Add(thread);
+        ReceiveThreads.Add(thread);
     }
 
-    public void SendBuffer() => _deserializer.SendPackets();
+    private static void StartSender()
+    {
+        new Thread(() =>
+        {
+            while (_isSenderWorking)
+            {
+                Thread.Sleep(SendPacketTick);
+                for (var i = 0; i < ActivePackers.Count; i++)
+                {
+                    var packer = ActivePackers[i];
+                    if (!packer._isActivated) continue;
+                    if (!Indexer.IsIndexed)
+                    {
+                        if (_isSenderWorking) _isSenderWorking = false;
+                        if (_isReceiverWorking) _isReceiverWorking = false;
+                        packer.Deactivate();
+                        continue;
+                    }
+
+                    packer._deserializer.SendPackets();
+                }
+            }
+        })
+        {
+            Name = "Send Packer Thread"
+        }.Start();
+    }
+
+    public void SendBuffer()
+    {
+        CheckIsPacketsIndexed();
+        CheckIsActivated();
+        _deserializer.SendPackets();
+    }
 
     public void WaitPacket<T>(Action<T?> callback, int timeout = 0) where T : struct, IPacket
     {
+        CheckIsPacketsIndexed();
+        CheckIsActivated();
         _deserializer.WaitPacket(typeof(T), callback, timeout);
     }
 
@@ -188,12 +234,18 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
 
     public void Request<T>(IRequest<T> send, bool compressed, int timeoutDisconnectMs,
         Action<T>? callback)
-        where T : struct, IPacket =>
+        where T : struct, IPacket
+    {
+        CheckIsPacketsIndexed();
+        CheckIsActivated();
         _deserializer.Request(send, compressed, callback, timeoutDisconnectMs);
+    }
 
     public void SendPacket<T>(T packet, bool compressed = true) where T : struct, IPacket
     {
-        var packetType = GetPacketType(packet.GetType());
+        CheckIsPacketsIndexed();
+        CheckIsActivated();
+        var packetType = Indexer.GetPacketType(packet.GetType());
         if (packetType is ResponsePacketType)
             throw new PacketSendException($"Response packet {packet.GetType().Name} cant be send.");
         if (packetType is RequestPacketType)
@@ -212,93 +264,14 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
 
     public override int GetHashCode() => (int)_priority;
 
-    public static void ReindexPackets()
+
+    private void CheckIsActivated()
     {
-        _isPacketsIndexed = true;
-        PacketIds.Clear();
-        PacketTypes.Clear();
-        ushort id = 0;
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().OrderBy(a => a.FullName))
-            IndexPackets(assembly.GetTypes(), ref id);
+        if (!_isActivated) throw new PackerException("Packer is not activated.");
     }
 
-    private static void IndexPackets(IEnumerable<Type> assemblyTypes, ref ushort id)
+    private static void CheckIsPacketsIndexed()
     {
-        var packetInterfaceType = typeof(IPacket);
-        var requestInterfaceType = typeof(IRequest);
-        var requestInterfaceTypeGeneric = typeof(IRequest<>);
-        foreach (var type in assemblyTypes.OrderBy(type => requestInterfaceType.IsAssignableFrom(type) ? 0 : 1))
-        {
-            Verify.Verify.Range(id, 0, ushort.MaxValue, $"Maximum packet types is {ushort.MaxValue}.");
-            if (type == requestInterfaceTypeGeneric || type == requestInterfaceType ||
-                type == packetInterfaceType) continue;
-            if (requestInterfaceType.IsAssignableFrom(type))
-            {
-                if (!type.IsValueType)
-                    throw new PacketException($"Request {type.Name} must be a struct.");
-                if (type.GetInterfaces().FirstOrDefault(i =>
-                        i.IsGenericType && i.GetGenericTypeDefinition() == requestInterfaceTypeGeneric) is not
-                    { } iType)
-                    throw new PackerException(
-                        $"Request packet packet must be inherited from {requestInterfaceTypeGeneric}.");
-                var serializer = type.GetCustomAttribute<CustomSerializerAttribute>()?.Serializer;
-                var responseTypeValue = iType.GetGenericArguments()[0];
-                var requestType = new RequestPacketType(type, responseTypeValue, id, serializer);
-                id++;
-                var responseType = new ResponsePacketType(responseTypeValue, type, id, serializer);
-                if (!PacketTypes.TryAdd(responseTypeValue, responseType))
-                {
-                    var value = PacketTypes[responseTypeValue];
-                    throw new PacketException(
-                        $"Request packet {type.Name} has the same response type with {value.Type.Name}.");
-                }
-
-                PacketTypes.Add(type, requestType);
-                PacketIds.Add(requestType);
-                PacketIds.Add(responseType);
-            }
-            else if (packetInterfaceType.IsAssignableFrom(type))
-            {
-                if (!type.IsValueType)
-                    throw new PacketException($"Packet {type.Name} must be a struct.");
-                var serializer = type.GetCustomAttribute<CustomSerializerAttribute>()?.Serializer;
-                var packetType = new DefaultPacketType(type, id, serializer);
-                if (PacketTypes.TryAdd(type, packetType))
-                    PacketIds.Add(packetType);
-                else continue;
-            }
-            else continue;
-
-            id++;
-        }
+        if (!Indexer.IsIndexed) throw new PackerException("Packets are not indexed.");
     }
-
-    public static PacketType GetPacketType(ushort id) =>
-        PacketIds.Count <= id ? throw new PackerException($"Packet id {id} not found.") : PacketIds[id];
-
-    public static bool TryGetPacketType(Type type, out PacketType? packetType) =>
-        PacketTypes.TryGetValue(type, out packetType);
-
-    public static bool TryGetPacketType(ushort id, out PacketType? packetType)
-    {
-        if (PacketIds.Count <= id)
-        {
-            packetType = null;
-            return false;
-        }
-
-        packetType = PacketIds[id];
-        return true;
-    }
-
-    public static PacketType GetPacketType(Type type)
-    {
-        if (!PacketTypes.TryGetValue(type, out var packetType))
-            throw new PackerException($"Type {type.FullName} is not a packet.");
-        return packetType;
-    }
-
-    private static bool CheckIsValidPacket(object p) => CheckIsValidPacket(p.GetType());
-
-    private static bool CheckIsValidPacket(Type type) => TryGetPacketType(type, out _);
 }

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using Undefined.Networking.Exceptions;
 using Undefined.Networking.Packets;
-using Undefined.Verify;
+using Undefined.Verifying;
 
 namespace Undefined.Networking;
 
@@ -80,7 +80,7 @@ public static class Indexer
         foreach (var type in assemblyTypes.OrderBy(type => type.Name)
                      .ThenBy(type => requestInterfaceType.IsAssignableFrom(type) ? 0 : 1))
         {
-            Verifying.Range(id, 0, ushort.MaxValue, $"Maximum packet types is {ushort.MaxValue}.");
+            Verify.Range(id, 0, ushort.MaxValue, $"Maximum packet types is {ushort.MaxValue}.");
             if (type == requestInterfaceTypeGeneric || type == requestInterfaceType ||
                 type == packetInterfaceType) continue;
             if (PacketTypes.ContainsKey(type)) continue;

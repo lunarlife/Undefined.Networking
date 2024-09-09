@@ -17,13 +17,13 @@
         <RepositoryUrl>https://github.com/lunarlife/Undefined.Networking</RepositoryUrl>
         <RepositoryType>https://github.com/lunarlife/Undefined.Networking</RepositoryType>
         <PackageTags>server client undefined socket</PackageTags>
-        <Version>1.0.2</Version>
+        <Version>1.0.2.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Undefined.Events" Version="1.1.0" />
+        <PackageReference Include="Undefined.Events" Version="1.2.0" />
         <PackageReference Include="Undefined.Serializer" Version="2.0.0"/>
-        <PackageReference Include="Undefined.Verify" Version="2.0.0" />
+        <PackageReference Include="Undefined.Verify" Version="3.0.1" />
         <None Include="../LICENSE.txt" Pack="true" PackagePath=""/>
         <None Include="../README.md" Pack="true" PackagePath=""/>
     </ItemGroup>

@@ -7,7 +7,7 @@ using Undefined.Networking.Events;
 using Undefined.Networking.Exceptions;
 using Undefined.Networking.Packets;
 using Undefined.Serializer;
-using Undefined.Verify;
+using Undefined.Verifying;
 
 namespace Undefined.Networking;
 
@@ -27,7 +27,7 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         get => _maxClientsCountPerThread;
         set
         {
-            Verifying.Min(value, 1);
+            Verify.Min(value, 1);
             _maxClientsCountPerThread = value;
         }
     }
@@ -37,7 +37,7 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         get => _sendTick;
         set
         {
-            Verifying.Min(value, 0);
+            Verify.Min(value, 0);
             _sendTick = value;
         }
     }
@@ -47,7 +47,7 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         get => _receiveTick;
         set
         {
-            Verifying.Min(value, 0);
+            Verify.Min(value, 0);
             _receiveTick = value;
         }
     }
@@ -70,7 +70,7 @@ public sealed class Packer : IDisposable, IEquatable<Packer>, IComparable<Packer
         get => _deserializer.MaxPacketsPerTick;
         set
         {
-            Verifying.Min(value, 1);
+            Verify.Min(value, 1);
             _deserializer.MaxPacketsPerTick = value;
         }
     }

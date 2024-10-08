@@ -5,7 +5,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <TargetFrameworks>net7.0;net8.0;net9.0;netstandard2.1</TargetFrameworks>
+        <TargetFrameworks>net7.0;net8.0;net9.0;netstandard2.1;netcoreapp3.1</TargetFrameworks>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Title>Undefined.Networking</Title>
         <Description>Beautiful and very useful client-server API</Description>
@@ -17,12 +17,12 @@
         <RepositoryUrl>https://github.com/lunarlife/Undefined.Networking</RepositoryUrl>
         <RepositoryType>https://github.com/lunarlife/Undefined.Networking</RepositoryType>
         <PackageTags>server client undefined socket</PackageTags>
-        <Version>1.0.2.1</Version>
+        <Version>1.0.2.2</Version>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Undefined.Events" Version="1.2.0" />
-        <PackageReference Include="Undefined.Serializer" Version="2.0.0"/>
+        <PackageReference Include="Undefined.Serializer" Version="2.1.0" />
         <PackageReference Include="Undefined.Verify" Version="3.0.1" />
         <None Include="../LICENSE.txt" Pack="true" PackagePath=""/>
         <None Include="../README.md" Pack="true" PackagePath=""/>
